@@ -1,6 +1,7 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
 import * as fs from 'fs';
 import * as path from 'path';
+import { repeatStringsByFrequency } from './util/repeatStringsByFrequency';
 
 const url = 'https://neetcode.io/practice/';
 
@@ -87,21 +88,60 @@ export const scrapeProblemsFromTab = async (
   await tabLinks[tabIndex].click();
   await addDelay(3000);
 
+  // change view
+  const videoModalSelector =
+    'button.button.navbar-btn.is-rounded.is-info.is-outlined.has-tooltip-bottom';
+  page.waitForSelector(videoModalSelector);
+  await page.click(videoModalSelector);
   const rows = await page.$$('tr.ng-star-inserted');
   const problems: Problem[] = [];
 
-  for (const row of rows.splice(1, 3)) {
+  await page.waitForSelector('app-pattern-table', { timeout: 1000 });
+
+  const accordionHeaders = await page.$$eval(
+    'app-pattern-table',
+    (tables: Element[]) =>
+      tables.map((table) => {
+        const text = table
+          .querySelector('button')
+          ?.textContent?.trim() as string;
+        const indexOfOpenParenthesis = text?.indexOf('(');
+        return text.slice(0, indexOfOpenParenthesis);
+      }),
+  );
+
+  const categoryTrCounts = await page.$$eval(
+    'app-pattern-table',
+    (tables: Element[]) =>
+      tables.map((table) => table.querySelectorAll('tr').length - 1),
+  );
+
+  const categories = repeatStringsByFrequency(
+    accordionHeaders,
+    categoryTrCounts,
+  );
+  // Log the total count of categories and the count of tr elements in each category
+
+  let current = 0;
+  let counter = current;
+  let batchSize = 1;
+  for (const row of rows.slice(current, current + batchSize)) {
     const anchor = await row.$('td a.table-text');
     const isPremiumElement = await row.$(
       'td a.has-tooltip-bottom.ng-star-inserted',
+    );
+    // const videoModalButton = await row.$()
+    page.click(
+      'button.button.navbar-btn.video-icon.is-rounded.is-outlined.ng-star-inserted',
     );
     const difficultyElement = await row.$('td.diff-col b');
     const container = await row.$('.accordion-container');
     const categoryElement = container
       ? await container.$(
-          'button.flex-container-row.accordion.button.is-fullwidth.active p',
+          'button.flex-container-row.accordion.button.is-fullwidth p',
         )
       : null;
+
     const href = anchor
       ? await (await anchor.getProperty('href')).jsonValue()
       : null;
@@ -119,26 +159,28 @@ export const scrapeProblemsFromTab = async (
     let content = null;
     if (href) {
       const detailPage = await page.browser().newPage();
-      await detailPage.goto(href);
+      await detailPage.goto(href + 'description');
       await detailPage.waitForSelector('div[class="elfjS"]'); // need to wait, otherwise can't find
       content = await detailPage.$eval(
         // content__u3I1 question-content__JfgR
         // data-layout-path="/ts0"
         // 'div[data-layout-path="/ts0"]',
         'div[class="elfjS"]',
-        (div: Element) => div.outerHTML,
+        (div: Element) => div.outerHTML.replace(/[\r\n]+/g, ' '),
       );
       await detailPage.close();
     }
 
     problems.push({
-      category: category?.trim() || '',
+      category: categories[counter],
       href,
       text: text?.trim() || '',
       difficulty: difficulty?.trim() || '',
       isPremium,
       question: content as string,
     });
+    console.log('counter', counter);
+    counter += 1;
   }
   return problems;
 };
@@ -172,12 +214,13 @@ export const saveProblemstoJSON = (
 
 export const convertToCSV = (problems: Problem[]): string => {
   // Create CSV headers
-  const headers = 'Category,Link,Text,Difficulty,IsPremium\n';
+  const delimitor = '|';
+  const headers = `DSA${delimitor}Title${delimitor}Level${delimitor}Question\n`;
 
   // Map each problem object to a CSV row
   const rows = problems
     .map((problem) => {
-      return `${problem.category},${problem.href},${problem.text},${problem.difficulty},${problem.isPremium}`;
+      return `${problem.category}${delimitor}${problem.text}${delimitor}${problem.difficulty}${delimitor}${problem.question}`;
     })
     .join('\n');
 

@@ -2,6 +2,7 @@
 
 import {
   initiatePuppeteer,
+  saveProblemsToCSV,
   saveProblemstoJSON,
   scrapeCategories,
   scrapeProblemsFromTab,
@@ -19,7 +20,7 @@ export const main = async () => {
     console.log(`Scraped problems from tab 2:`, problems);
 
     // Saving scraped data to JSON file
-    await saveProblemstoJSON('problems.json', './data', problems);
+    await saveProblemsToCSV('problems.csv', './data', problems);
 
     await browser.close();
   } catch (error) {
