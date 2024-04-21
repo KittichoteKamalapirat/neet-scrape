@@ -61,7 +61,7 @@ export const scrapeCategories = async (
           const paragraph = button.querySelector('p');
           return paragraph ? paragraph.textContent?.trim() ?? null : null;
         })
-        .filter(Boolean),
+        .filter(Boolean) as any,
   );
 
   return { categories, categoryCount };
@@ -73,46 +73,73 @@ interface Problem {
   text: string | null;
   difficulty: string | null;
   isPremium: boolean;
+  question: string;
 }
 
 export const scrapeProblemsFromTab = async (
   page: Page,
   tabIndex: number,
 ): Promise<Problem[]> => {
+  await page.goto(url); // Ensure you are at the starting URL
   const tabLinks = await page.$$(
     'div.tabs.is-centered.is-boxed.is-large ul.tabs-list li a.tab-link',
   );
   await tabLinks[tabIndex].click();
-  await page.waitForTimeout(3000);
-  const problems = await page.$$eval(
-    'tr.ng-star-inserted',
-    (rows: Element[]) => {
-      return rows.map((row) => {
-        const anchor = row.querySelector('td a.table-text');
-        const isPremium = row.querySelector(
-          'td a.has-tooltip-bottom.ng-star-inserted',
-        );
-        const difficultyElement = row.querySelector('td.diff-col b');
-        const container = row.closest('.accordion-container');
-        const categoryElement = container
-          ? container.querySelector(
-              'button.flex-container-row.accordion.button.is-fullwidth.active p',
-            )
-          : null;
-        return {
-          category: categoryElement
-            ? categoryElement.textContent?.trim() ?? null
-            : null,
-          href: anchor ? anchor.getAttribute('href') : null,
-          text: anchor ? anchor.textContent?.trim() ?? null : null,
-          difficulty: difficultyElement
-            ? difficultyElement.textContent?.trim() ?? null
-            : null,
-          isPremium: !!isPremium,
-        };
-      });
-    },
-  );
+  await addDelay(3000);
+
+  const rows = await page.$$('tr.ng-star-inserted');
+  const problems: Problem[] = [];
+
+  for (const row of rows.splice(1, 3)) {
+    const anchor = await row.$('td a.table-text');
+    const isPremiumElement = await row.$(
+      'td a.has-tooltip-bottom.ng-star-inserted',
+    );
+    const difficultyElement = await row.$('td.diff-col b');
+    const container = await row.$('.accordion-container');
+    const categoryElement = container
+      ? await container.$(
+          'button.flex-container-row.accordion.button.is-fullwidth.active p',
+        )
+      : null;
+    const href = anchor
+      ? await (await anchor.getProperty('href')).jsonValue()
+      : null;
+    const text = anchor
+      ? await (await anchor.getProperty('textContent')).jsonValue()
+      : null;
+    const category = categoryElement
+      ? await (await categoryElement.getProperty('textContent')).jsonValue()
+      : null;
+    const difficulty = difficultyElement
+      ? await (await difficultyElement.getProperty('textContent')).jsonValue()
+      : null;
+    const isPremium = !!isPremiumElement;
+
+    let content = null;
+    if (href) {
+      const detailPage = await page.browser().newPage();
+      await detailPage.goto(href);
+      await detailPage.waitForSelector('div[class="elfjS"]'); // need to wait, otherwise can't find
+      content = await detailPage.$eval(
+        // content__u3I1 question-content__JfgR
+        // data-layout-path="/ts0"
+        // 'div[data-layout-path="/ts0"]',
+        'div[class="elfjS"]',
+        (div: Element) => div.outerHTML,
+      );
+      await detailPage.close();
+    }
+
+    problems.push({
+      category: category?.trim() || '',
+      href,
+      text: text?.trim() || '',
+      difficulty: difficulty?.trim() || '',
+      isPremium,
+      question: content as string,
+    });
+  }
   return problems;
 };
 

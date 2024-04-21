@@ -7,12 +7,12 @@ import {
   scrapeProblemsFromTab,
 } from './webScrapeProblems';
 
-async function main() {
+export const main = async () => {
   try {
     const { page, browser } = await initiatePuppeteer();
 
-    const { categories, categoryCount } = await scrapeCategories(page);
-    console.log(`Scraped ${categoryCount} categories:`, categories);
+    // const { categories, categoryCount } = await scrapeCategories(page);
+    // console.log(`Scraped ${categoryCount} categories:`, categories);
 
     // Example of scraping problems from a specific tab index
     const problems = await scrapeProblemsFromTab(page, 2); // assuming tab index 2 is of interest
@@ -25,6 +25,4 @@ async function main() {
   } catch (error) {
     console.error('Failed to run web scraper:', error);
   }
-}
-
-main();
+};
